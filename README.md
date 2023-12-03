@@ -28,11 +28,11 @@ This application is designed to automatically respond to unread messages in your
 ### Configuration
 
 -   Modify the predefined response message in `routes/routes.js` to customize the auto-response.
--   Adjust the port number in `index.js` if necessary.
+-   Adjust the port number in `server.js` if necessary.
 
 ### Running the Application
 
-Run the application using `npm start`. The server will start on port 5001 by default.
+Run the application using `node server.js`. The server will start on port 5001 by default.
 
 Usage
 -----
