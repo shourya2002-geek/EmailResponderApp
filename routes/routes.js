@@ -5,10 +5,10 @@ const path = require("path");
 const { authenticate } = require("@google-cloud/local-auth");
 const fs = require("fs").promises;
 const { google } = require("googleapis");
-const labelCreate = require('../labelCreate.js');
-const unrepliedMessages = require('../unrepliedMessages.js');
+const labelCreate = require('../labelCreate.js'); // Importing a function to create a label
+const unrepliedMessages = require('../unrepliedMessages.js'); // Importing a function to get unreplied messages
 
-// these are the scope that we want to access 
+// Scope definitions for accessing Gmail API
 const SCOPES = [
   "https://www.googleapis.com/auth/gmail.readonly",
   "https://www.googleapis.com/auth/gmail.send",
@@ -16,106 +16,94 @@ const SCOPES = [
   "https://mail.google.com/",
 ];
 
-
-
+// Route to handle root endpoint
 router.get("/", (req, res) => {
-    res.json("Welcome to the app");
+  res.json("Welcome to the app");
+});
+
+// Route to handle email processing
+router.get("/email", async (req, res) => {
+  // Authenticate with Google GMAIL API using local authentication
+  const auth = await authenticate({
+    keyfilePath: path.join(__dirname, "../secrets.json"),
+    scopes: SCOPES,
   });
 
-router.get("/email", async (req, res) => {
+  // Initialize Gmail API
+  const gmail = google.gmail({ version: "v1", auth });
 
-    // here i am taking google GMAIL  authentication 
-    const auth = await authenticate({
-      keyfilePath: path.join(__dirname, "../secrets.json"),
-      scopes: SCOPES,
-    });
-  
-    // console.log("this is auth",auth)
-  
-    // here i getting authorize gmail id
-    const gmail = google.gmail({ version: "v1", auth });
-  
-  
-    //  here i am finding all the labels availeble on current gmail
-    const response = await gmail.users.labels.list({
-      userId: "me",
-    });
-  
- 
-  
-    async function main() {
-      // Create a label for theApp
-      const labelId = await labelCreate(auth);
-      // console.log(`Label  ${labelId}`);
-      // Repeat  in Random intervals
-      setInterval(async () => {
-        //Get messages that have no prior reply
-        const messages = await unrepliedMessages(auth);
-        // console.log("Unreply messages", messages);
-  
-        //  Here i am checking is there any gmail that did not get reply
-        if (messages && messages.length > 0) {
-          for (const message of messages) {
-            const messageData = await gmail.users.messages.get({
+  // Function to perform label creation and email processing at intervals
+  async function main() {
+    // Create a label for the app
+    const labelId = await labelCreate(auth);
+
+    // Set an interval to check and process unreplied messages
+    setInterval(async () => {
+      // Get messages that have no prior reply
+      const messages = await unrepliedMessages(auth);
+
+      if (messages && messages.length > 0) {
+        for (const message of messages) {
+          // Get message details
+          const messageData = await gmail.users.messages.get({
+            auth,
+            userId: "me",
+            id: message.id,
+          });
+
+          const email = messageData.data;
+
+          // Check if the email has been replied to previously
+          const hasReplied = email.payload.headers.some(
+            (header) => header.name === "In-Reply-To"
+          );
+
+          if (!hasReplied) {
+            // Craft the reply message
+            const replyMessage = {
+              userId: "me",
+              resource: {
+                raw: Buffer.from(
+                  `To: ${
+                    email.payload.headers.find(
+                      (header) => header.name === "From"
+                    ).value
+                  }\r\n` +
+                    `Subject: Re: ${
+                      email.payload.headers.find(
+                        (header) => header.name === "Subject"
+                      ).value
+                    }\r\n` +
+                    `Content-Type: text/plain; charset="UTF-8"\r\n` +
+                    `Content-Transfer-Encoding: 7bit\r\n\r\n` +
+                    `Thank you for your email. I'm currently on vacation and will reply to you when I return.\r\n`
+                ).toString("base64"),
+              },
+            };
+
+            // Send the crafted reply message
+            await gmail.users.messages.send(replyMessage);
+
+            // Add label and move the email
+            await gmail.users.messages.modify({
               auth,
               userId: "me",
               id: message.id,
+              resource: {
+                addLabelIds: [labelId],
+                removeLabelIds: ["INBOX"],
+              },
             });
-  
-            const email = messageData.data;
-            const hasReplied = email.payload.headers.some(
-              (header) => header.name === "In-Reply-To"
-            );
-  
-            if (!hasReplied) {
-              // Craft the reply message
-              const replyMessage = {
-                userId: "me",
-                resource: {
-                  raw: Buffer.from(
-                    `To: ${
-                      email.payload.headers.find(
-                        (header) => header.name === "From"
-                      ).value
-                    }\r\n` +
-                      `Subject: Re: ${
-                        email.payload.headers.find(
-                          (header) => header.name === "Subject"
-                        ).value
-                      }\r\n` +
-                      `Content-Type: text/plain; charset="UTF-8"\r\n` +
-                      `Content-Transfer-Encoding: 7bit\r\n\r\n` +
-                      `Thank you for your email. I'm currently on vacation and will reply to you when I return.\r\n`
-                  ).toString("base64"),
-                },
-              };
-              
-              await gmail.users.messages.send(replyMessage);
-  
-              // Add label and move the email
-              await gmail.users.messages.modify({
-                auth,
-                userId: "me",
-                id: message.id,
-                resource: {
-                  addLabelIds: [labelId],
-                  removeLabelIds: ["INBOX"],
-                },
-              });
-            }
           }
         }
-      }, Math.floor(Math.random() * (120 - 45 + 1) + 45) * 1000);
-    }
-  
-  
-    
-    main();
-    // const labels = response.data.labels;
-    res.json({ "Email Responder App": auth });
-  });
-  
+      }
+    }, Math.floor(Math.random() * (120 - 45 + 1) + 45) * 1000); // Random intervals between 45 and 120 seconds
+  }
 
+  // Execute the main function to start email processing
+  main();
 
+  res.json({ "Email Responder App": auth }); // Respond with authentication details
+});
 
 module.exports = router;
