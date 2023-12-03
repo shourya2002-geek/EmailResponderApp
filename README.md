@@ -1,5 +1,4 @@
 # Email Responder App for Gmail
-=======================
 
 This application is designed to automatically respond to unread messages in your Gmail inbox with a predefined message. It utilizes the Gmail API provided by Google to fetch unread messages, detect unreplied messages, and send an automated response.
 
